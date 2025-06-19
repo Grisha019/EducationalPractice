@@ -9,29 +9,32 @@ namespace EducationalPractice
     public partial class Form1 : Form
     {
         private PictureBox player;
-        private List<PictureBox> objects = new List<PictureBox>();
-        private Random random = new Random();
+        private List<PictureBox> enemies = new();
+        private List<PictureBox> objects = new();
+        private readonly Random random = new();
 
         private int score = 0;
         private int timeLeft = 60;
-        private int spawnInterval = 2000;
+        private int trapsLeft = 10;
+        private const int spawnInterval = 2000;
+        private bool isGameOver = false;
 
         private Timer gameTimer;
         private Timer spawnTimer;
 
+        private readonly IGameObjectFactory enemyFactory = new EnemyFactory();
+
         public Form1()
         {
             InitializeComponent();
-
-            // Ключевое исправление: подписываемся на события клавиатуры
-            this.KeyPreview = true; // Форма будет получать события клавиш первой
-            this.KeyDown += Form1_KeyDown;
-
+            KeyPreview = true;
+            KeyDown += Form1_KeyDown;
             InitializeGame();
         }
 
         private void InitializeGame()
         {
+            // Инициализация игрока
             player = new PictureBox
             {
                 Size = new Size(20, 20),
@@ -40,70 +43,96 @@ namespace EducationalPractice
             };
             gamePanel.Controls.Add(player);
 
+            // Таймер игры
             gameTimer = new Timer { Interval = 1000 };
             gameTimer.Tick += GameTimer_Tick;
 
+            // Таймер появления врагов
             spawnTimer = new Timer { Interval = spawnInterval };
             spawnTimer.Tick += SpawnTimer_Tick;
 
-            // Разрешаем обработку стрелок на игровой панели
-            gamePanel.PreviewKeyDown += (s, e) => {
-                e.IsInputKey = true; // Помечаем все клавиши как обрабатываемые
-            };
+            // Обработка стрелок
+            gamePanel.PreviewKeyDown += (s, e) => e.IsInputKey = true;
         }
 
-        // Остальной код без изменений...
         private void GameTimer_Tick(object sender, EventArgs e)
         {
             timeLeft--;
             lblTime.Text = $"Время: {timeLeft}";
 
             if (timeLeft <= 0)
-            {
                 EndGame();
-            }
         }
 
         private void SpawnTimer_Tick(object sender, EventArgs e)
         {
-            SpawnObject();
+            var newEnemy = enemyFactory.CreateEnemy(enemies, gamePanel);
+            enemies.Add(newEnemy);
+            gamePanel.Controls.Add(newEnemy);
 
-            if (spawnInterval > 500)
+            Timer moveTimer = new() { Interval = 200 };
+            moveTimer.Tick += (_, _) =>
             {
-                spawnInterval -= 100;
-                spawnTimer.Interval = spawnInterval;
-            }
+                MoveEnemyRandomly(newEnemy);
+                CheckCollisions();
+            };
+            moveTimer.Start();
         }
 
-        private void SpawnObject()
+        private void MoveEnemyRandomly(PictureBox enemy)
         {
-            var obj = new PictureBox
-            {
-                Size = new Size(15, 15),
-                BackColor = Color.FromArgb(random.Next(256), random.Next(256), random.Next(256)),
-                Location = new Point(
-                    random.Next(gamePanel.Width - 15),
-                    random.Next(gamePanel.Height - 15))
-            };
+            int dx = random.Next(-1, 2) * 5;
+            int dy = random.Next(-1, 2) * 5;
+            Point newPos = new(enemy.Left + dx, enemy.Top + dy);
 
-            gamePanel.Controls.Add(obj);
-            objects.Add(obj);
-            obj.BringToFront();
-            player.BringToFront();
+            if (newPos.X >= 0 && newPos.Y >= 0 &&
+                newPos.X <= gamePanel.Width - enemy.Width &&
+                newPos.Y <= gamePanel.Height - enemy.Height)
+            {
+                enemy.Location = newPos;
+            }
         }
 
         private void CheckCollisions()
         {
-            for (int i = objects.Count - 1; i >= 0; i--)
+            if (isGameOver) return;
+
+            foreach (var enemy in enemies.ToArray())
             {
-                if (player.Bounds.IntersectsWith(objects[i].Bounds))
+                // Столкновение с игроком
+                if (enemy.Bounds.IntersectsWith(player.Bounds))
                 {
-                    gamePanel.Controls.Remove(objects[i]);
-                    objects.RemoveAt(i);
-                    score++;
-                    lblScore.Text = $"Счет: {score}";
+                    GameOver();
+                    return;
+                }
+
+                // Столкновение с ловушкой
+                foreach (Control control in gamePanel.Controls)
+                {
+                    if (control is PictureBox trap && trap.Tag as string == "trap")
+                    {
+                        if (enemy.Bounds.IntersectsWith(trap.Bounds))
+                        {
+                            gamePanel.Controls.Remove(enemy);
+                            enemies.Remove(enemy);
+                            score++;
+                            UpdateScore();
+                            break;
+                        }
+                    }
                 }
             }
+        }
+
+        private void GameOver()
+        {
+            if (isGameOver) return;
+
+            isGameOver = true;
+            gameTimer.Stop();
+            spawnTimer.Stop();
+            MessageBox.Show("Вы проиграли!");
+            btnStart.Enabled = true;
         }
 
         private void EndGame()
@@ -114,46 +143,61 @@ namespace EducationalPractice
             btnStart.Enabled = true;
         }
 
+        private void UpdateScore()
+        {
+            lblScore.Text = $"Очки: {score}";
+        }
+
+        private void UpdateTrapsUI()
+        {
+            lblScore.Text = $"Ловушки: {trapsLeft}";
+        }
+
         private void btnStart_Click(object sender, EventArgs e)
         {
-            StartGame();
-        }
+            isGameOver = false;
 
-        private void StartGame()
-        {
+            gamePanel.Controls.Clear();
+            enemies.Clear();
+            trapsLeft = 10;
             score = 0;
             timeLeft = 60;
-            spawnInterval = 2000;
 
-            foreach (var obj in objects)
-            {
-                gamePanel.Controls.Remove(obj);
-            }
-            objects.Clear();
-
-            lblScore.Text = "Счет: 0";
-            lblTime.Text = "Время: 60";
-            btnStart.Enabled = false;
+            UpdateScore();
+            UpdateTrapsUI();
 
             player.Location = new Point(gamePanel.Width / 2 - 10, gamePanel.Height / 2 - 10);
+            gamePanel.Controls.Add(player);
 
             gameTimer.Start();
-            spawnTimer.Interval = spawnInterval;
             spawnTimer.Start();
-
-            SpawnObject();
-
-            // Устанавливаем фокус на форму для приема клавиш
-            this.Focus();
+            ActiveControl = gamePanel;
         }
 
-        // Исправленный обработчик клавиш
         private void Form1_KeyDown(object sender, KeyEventArgs e)
         {
             if (!gameTimer.Enabled) return;
 
             int speed = 5;
             Point newLocation = player.Location;
+
+            if (e.KeyCode == Keys.Space && trapsLeft > 0)
+            {
+                PictureBox trap = new()
+                {
+                    Size = new Size(20, 20),
+                    BackColor = Color.Black,
+                    Location = player.Location,
+                    Tag = "trap"
+                };
+                gamePanel.Controls.Add(trap);
+                trap.BringToFront();
+                player.BringToFront();
+
+                trapsLeft--;
+                UpdateTrapsUI();
+                return;
+            }
 
             switch (e.KeyCode)
             {
@@ -170,10 +214,9 @@ namespace EducationalPractice
                     newLocation.Y += speed;
                     break;
                 default:
-                    return; // Игнорируем другие клавиши
+                    return;
             }
 
-            // Проверка границ
             newLocation.X = Math.Clamp(newLocation.X, 0, gamePanel.Width - player.Width);
             newLocation.Y = Math.Clamp(newLocation.Y, 0, gamePanel.Height - player.Height);
 
@@ -181,8 +224,8 @@ namespace EducationalPractice
             CheckCollisions();
         }
 
-        // Пустые методы можно удалить, но если нужны - оставляем
         private void panel1_Paint_1(object sender, PaintEventArgs e) { }
         private void Form1_Load(object sender, EventArgs e) { }
     }
+   
 }
