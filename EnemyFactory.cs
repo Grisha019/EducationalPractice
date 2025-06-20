@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Drawing;
+using System.Windows.Forms;
 
 namespace EducationalPractice
 {
@@ -20,9 +19,9 @@ namespace EducationalPractice
                 overlap = false;
                 enemy = new PictureBox
                 {
-                    Size = new Size(15, 15),
+                    Size = new Size(40, 40),
                     BackColor = Color.Red,
-                    Location = new Point(rand.Next(gamePanel.Width - 15), rand.Next(gamePanel.Height - 15))
+                    Location = GetRandomLocation(gamePanel)
                 };
 
                 foreach (var e in existingEnemies)
@@ -38,6 +37,12 @@ namespace EducationalPractice
 
             return enemy;
         }
+
+        private Point GetRandomLocation(Panel panel)
+        {
+            int x = rand.Next(0, panel.Width - 40);
+            int y = rand.Next(0, panel.Height - 40);
+            return new Point(x, y);
+        }
     }
 }
-
