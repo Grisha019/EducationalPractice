@@ -6,11 +6,10 @@ using Timer = System.Windows.Forms.Timer;
 
 namespace EducationalPractice
 {
-    public partial class Form1 : Form
+    public partial class GameMain : Form
     {
         private PictureBox player;
         private List<PictureBox> enemies = new();
-        private List<PictureBox> objects = new();
         private readonly Random random = new();
 
         private int score = 0;
@@ -24,34 +23,68 @@ namespace EducationalPractice
 
         private readonly IGameObjectFactory enemyFactory = new EnemyFactory();
 
-        public Form1()
+        public GameMain() : this(Color.Blue) { }
+
+        public GameMain(Color playerColor)
         {
             InitializeComponent();
+            InitializeCustomUI(playerColor);
             KeyPreview = true;
-            KeyDown += Form1_KeyDown;
-            InitializeGame();
+            KeyDown += GameMain_KeyDown;
         }
 
-        private void InitializeGame()
+        private void InitializeComponent()
         {
-            // Инициализация игрока
+            this.Text = "Educational Practice Game";
+            this.Size = new Size(800, 450);
+        }
+
+        private void InitializeCustomUI(Color playerColor)
+        {
+            // Инициализация игровой панели
+            gamePanel = new Panel
+            {
+                Location = new Point(388, 12),
+                Size = new Size(400, 400),
+                BackColor = Color.White,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            this.Controls.Add(gamePanel);
+
+            // Метки
+            lblScore = new Label { Text = "Очки: 0", Location = new Point(154, 227), AutoSize = true };
+            lblTime = new Label { Text = "Время: 60", Location = new Point(154, 262), AutoSize = true };
+            lblTraps = new Label { Text = $"Бомбы: {trapsLeft}", Location = new Point(154, 297), AutoSize = true };
+
+            btnStart = new Button
+            {
+                Text = "Начать игру",
+                Location = new Point(111, 188),
+                Size = new Size(134, 23)
+            };
+            btnStart.Click += btnStart_Click;
+
+            this.Controls.AddRange(new Control[] { lblScore, lblTime, lblTraps, btnStart });
+
+            InitializeGame(playerColor);
+        }
+
+        private void InitializeGame(Color playerColor)
+        {
             player = new PictureBox
             {
                 Size = new Size(20, 20),
-                BackColor = Color.Blue,
+                BackColor = playerColor,
                 Location = new Point(gamePanel.Width / 2 - 10, gamePanel.Height / 2 - 10)
             };
             gamePanel.Controls.Add(player);
 
-            // Таймер игры
             gameTimer = new Timer { Interval = 1000 };
             gameTimer.Tick += GameTimer_Tick;
 
-            // Таймер появления врагов
             spawnTimer = new Timer { Interval = spawnInterval };
             spawnTimer.Tick += SpawnTimer_Tick;
 
-            // Обработка стрелок
             gamePanel.PreviewKeyDown += (s, e) => e.IsInputKey = true;
         }
 
@@ -70,7 +103,7 @@ namespace EducationalPractice
             enemies.Add(newEnemy);
             gamePanel.Controls.Add(newEnemy);
 
-            Timer moveTimer = new() { Interval = 200 };
+            Timer moveTimer = new Timer { Interval = 200 };
             moveTimer.Tick += (_, _) =>
             {
                 MoveEnemyRandomly(newEnemy);
@@ -99,20 +132,19 @@ namespace EducationalPractice
 
             foreach (var enemy in enemies.ToArray())
             {
-                // Столкновение с игроком
                 if (enemy.Bounds.IntersectsWith(player.Bounds))
                 {
                     GameOver();
                     return;
                 }
 
-                // Столкновение с ловушкой
                 foreach (Control control in gamePanel.Controls)
                 {
                     if (control is PictureBox trap && trap.Tag as string == "trap")
                     {
                         if (enemy.Bounds.IntersectsWith(trap.Bounds))
                         {
+                            gamePanel.Controls.Remove(trap);
                             gamePanel.Controls.Remove(enemy);
                             enemies.Remove(enemy);
                             score++;
@@ -150,7 +182,7 @@ namespace EducationalPractice
 
         private void UpdateTrapsUI()
         {
-            lblScore.Text = $"Ловушки: {trapsLeft}";
+            lblTraps.Text = $"Бомбы: {trapsLeft}";
         }
 
         private void btnStart_Click(object sender, EventArgs e)
@@ -174,49 +206,42 @@ namespace EducationalPractice
             ActiveControl = gamePanel;
         }
 
-        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        private void PlaceTrap()
+        {
+            PictureBox trap = new PictureBox
+            {
+                Size = new Size(20, 20),
+                BackColor = Color.Black,
+                Location = player.Location,
+                Tag = "trap"
+            };
+
+            gamePanel.Controls.Add(trap);
+            trap.BringToFront();
+
+            trapsLeft--;
+            UpdateTrapsUI();
+        }
+
+        private void GameMain_KeyDown(object sender, KeyEventArgs e)
         {
             if (!gameTimer.Enabled) return;
 
             int speed = 5;
-            Point newLocation = player.Location;
+            int dx = 0, dy = 0;
 
             if (e.KeyCode == Keys.Space && trapsLeft > 0)
             {
-                PictureBox trap = new()
-                {
-                    Size = new Size(20, 20),
-                    BackColor = Color.Black,
-                    Location = player.Location,
-                    Tag = "trap"
-                };
-                gamePanel.Controls.Add(trap);
-                trap.BringToFront();
-                player.BringToFront();
-
-                trapsLeft--;
-                UpdateTrapsUI();
+                PlaceTrap();
                 return;
             }
 
-            switch (e.KeyCode)
-            {
-                case Keys.Left:
-                    newLocation.X -= speed;
-                    break;
-                case Keys.Right:
-                    newLocation.X += speed;
-                    break;
-                case Keys.Up:
-                    newLocation.Y -= speed;
-                    break;
-                case Keys.Down:
-                    newLocation.Y += speed;
-                    break;
-                default:
-                    return;
-            }
+            if (e.KeyCode == Keys.W) dy -= speed;
+            if (e.KeyCode == Keys.S) dy += speed;
+            if (e.KeyCode == Keys.A) dx -= speed;
+            if (e.KeyCode == Keys.D) dx += speed;
 
+            Point newLocation = new(player.Left + dx, player.Top + dy);
             newLocation.X = Math.Clamp(newLocation.X, 0, gamePanel.Width - player.Width);
             newLocation.Y = Math.Clamp(newLocation.Y, 0, gamePanel.Height - player.Height);
 
@@ -224,8 +249,10 @@ namespace EducationalPractice
             CheckCollisions();
         }
 
-        private void panel1_Paint_1(object sender, PaintEventArgs e) { }
-        private void Form1_Load(object sender, EventArgs e) { }
+        private Panel gamePanel;
+        private Label lblScore;
+        private Label lblTime;
+        private Label lblTraps;
+        private Button btnStart;
     }
-   
 }
